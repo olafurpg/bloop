@@ -276,7 +276,8 @@ object Compiler {
       val sources = inputs.sources // Sources are all files
       val classpath = inputs.classpath.map(_.toFile)
       val optionsWithoutFatalWarnings = inputs.scalacOptions.flatMap { option =>
-        if (option != "-Xfatal-warnings") List(option)
+        if (option == "-Youtline") List(option, "-Ypickle-write", newClassesDir.toString)
+        else if (option != "-Xfatal-warnings") List(option)
         else {
           if (!isFatalWarningsEnabled) isFatalWarningsEnabled = true
           Nil

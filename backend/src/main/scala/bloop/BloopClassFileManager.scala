@@ -31,7 +31,7 @@ final class BloopClassFileManager(
   private[this] val newClassesDirPath = newClassesDir.toString
 
   // Supported compile products by the class file manager
-  private[this] final val supportedCompileProducts = List(".sjsir", ".nir", ".tasty")
+  private[this] final val supportedCompileProducts = List(".sjsir", ".nir", ".tasty", ".sig")
 
   /*
    * Initialize the class files from dependent projects that should not be
