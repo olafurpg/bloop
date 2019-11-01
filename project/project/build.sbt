@@ -41,7 +41,7 @@ val sbtBloopBuildShaded = project
                 ppath.contains("scala-xml") ||
                 ppath.contains("macro-compat") ||
                 ppath.contains("scalamacros")
-            ) && path.exists
+            ) && path.isFile
           }
         }
       }.value
