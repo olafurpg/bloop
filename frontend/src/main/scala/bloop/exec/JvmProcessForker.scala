@@ -1,17 +1,17 @@
 package bloop.exec
 
-import java.io.File.pathSeparator
-import java.net.{InetSocketAddress, ServerSocket, URLClassLoader}
-
 import bloop.cli.CommonOptions
-import bloop.io.AbsolutePath
 import bloop.data.JdkConfig
 import bloop.engine.tasks.RunMode
+import bloop.io.{AbsolutePath, Paths, RelativePath}
 import bloop.logging.{DebugFilter, Logger}
-import monix.eval.Task
-
-import scala.util.{Failure, Success, Try}
 import bloop.util.CrossPlatform
+import java.io.File.pathSeparator
+import java.net.URLClassLoader
+import java.nio.file.Files
+import java.util.jar.{Attributes, JarEntry, JarOutputStream, Manifest}
+import monix.eval.Task
+import scala.util.{Failure, Success, Try}
 
 /**
  * Collects configuration to start a new program in a new process
@@ -71,6 +71,9 @@ trait JvmProcessForker {
 }
 
 object JvmProcessForker {
+  // Windows max cmd line length is 32767, which seems to be the least of the common shells.
+  val classpathCharLimit: Int = 30000
+
   def apply(config: JdkConfig, classpath: Array[AbsolutePath]): JvmProcessForker =
     new JvmForker(config, classpath)
 
@@ -113,22 +116,75 @@ final class JvmForker(config: JdkConfig, classpath: Array[AbsolutePath]) extends
       extraClasspath: Array[AbsolutePath]
   ): Task[Int] = {
     val jvmOptions = jargs.map(_.stripPrefix("-J")) ++ config.javaOptions
-    val fullClasspath = (classpath ++ extraClasspath).map(_.syntax).mkString(pathSeparator)
-    Task.fromTry(javaExecutable).flatMap { java =>
-      val classpathOption = "-cp" :: fullClasspath :: Nil
-      val appOptions = mainClass :: args.toList
-      val cmd = java.syntax :: jvmOptions.toList ::: classpathOption ::: appOptions
-      val logTask = if (logger.isVerbose) {
+    val fullClasspath = classpath ++ extraClasspath
+
+    for {
+      fullClasspathStr <- Task.fromTry(ensureClasspathLength(fullClasspath))
+      java <- Task.fromTry(javaExecutable)
+
+      classpathOption = "-cp" :: fullClasspathStr :: Nil
+      appOptions = mainClass :: args.toList
+      cmd = java.syntax :: jvmOptions.toList ::: classpathOption ::: appOptions
+
+      logTask <- if (logger.isVerbose) {
         val debugOptions =
           s"""
              |Fork options:
              |   command      = '${cmd.mkString(" ")}'
              |   cwd          = '$cwd'""".stripMargin
         Task(logger.debug(debugOptions)(DebugFilter.All))
-      } else Task.unit
-      logTask.flatMap(_ => Forker.run(cwd, cmd, logger, opts))
+      } else {
+        Task.unit
+      }
+      res <- Forker.run(cwd, cmd, logger, opts)
+    } yield {
+      res
     }
   }
+
+  private def ensureClasspathLength(classpath: Array[AbsolutePath]): Try[String] = {
+    val fullClasspathStr = classpath.map(_.syntax).mkString(pathSeparator)
+
+    if (fullClasspathStr.length > JvmProcessForker.classpathCharLimit)
+      createTempDependenciesJar(classpath).map(_.syntax)
+    else
+      Try(fullClasspathStr)
+  }
+
+  private def createTempDependenciesJar(classpath: Array[AbsolutePath]): Try[AbsolutePath] = Try {
+    val prefix = "jvm-forker-deps"
+    val depsJar = Files.createTempFile(prefix, ".jar").toAbsolutePath
+
+    // We need to manually collect .class files from directories into the jar since
+    // manifest files only work with .jar files for classpath
+    val (directories, files) = classpath.partition(_.isDirectory)
+
+    val (globbedJars, globbedClasses) = directories
+      .flatMap(expandDirectory)
+      .partition(_._2.syntax.endsWith(".jar"))
+
+    val classpathStr = (files ++ globbedJars.map(_._2)).map(_.syntax).mkString(" ")
+
+    val manifest = new Manifest()
+    manifest.getMainAttributes.put(Attributes.Name.MANIFEST_VERSION, "1.0")
+    manifest.getMainAttributes.put(Attributes.Name.CLASS_PATH, classpathStr)
+
+    val jos = new JarOutputStream(Files.newOutputStream(depsJar), manifest)
+    globbedClasses.foreach {
+      case (relpath, abspath) =>
+        jos.putNextEntry(new JarEntry(relpath.syntax))
+        jos.write(abspath.readAllBytes)
+        jos.closeEntry()
+    }
+    jos.close()
+
+    AbsolutePath(depsJar)
+  }
+
+  private def expandDirectory(root: AbsolutePath): List[(RelativePath, AbsolutePath)] =
+    Paths
+      .pathFilesUnder(root, "glob:**.{jar,class}")
+      .map(path => (path.toRelative(root), path))
 
   private def javaExecutable: Try[AbsolutePath] = {
     val javaPath = config.javaHome.resolve("bin").resolve("java")
