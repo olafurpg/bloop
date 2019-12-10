@@ -12,6 +12,8 @@ import java.nio.file.Files
 import java.util.jar.{Attributes, JarEntry, JarOutputStream, Manifest}
 import monix.eval.Task
 import scala.util.{Failure, Success, Try}
+import java.nio.charset.StandardCharsets
+import java.nio.file.StandardCopyOption
 
 /**
  * Collects configuration to start a new program in a new process
@@ -117,13 +119,32 @@ final class JvmForker(config: JdkConfig, classpath: Array[AbsolutePath]) extends
   ): Task[Int] = {
     val jvmOptions = jargs.map(_.stripPrefix("-J")) ++ config.javaOptions
     val fullClasspath = classpath ++ extraClasspath
-
     for {
       fullClasspathStr <- Task.fromTry(ensureClasspathLength(fullClasspath))
       java <- Task.fromTry(javaExecutable)
-
-      classpathOption = "-cp" :: fullClasspathStr :: Nil
-      appOptions = mainClass :: args.toList
+      argsFile = {
+        val tmp = Files.createTempFile("bloop", "args.txt");
+        val argsText = new StringBuilder()
+          .append(fullClasspathStr)
+          .append("\n")
+          .append(mainClass)
+        args.foreach { arg =>
+          argsText.append("\n").append(arg)
+        }
+        Files.write(tmp, argsText.toString.getBytes(StandardCharsets.UTF_8))
+      }
+      forkLauncher = classOf[ForkLauncher]
+      forkLauncherClasspath = {
+        val tmp = Files.createTempDirectory("bloop")
+        val out = tmp.resolve("bloop").resolve("exec").resolve(s"${forkLauncher.getSimpleName()}.class")
+        val classfile = forkLauncher.getCanonicalName().replace('.', '/') + ".class"
+        val in = this.getClass.getClassLoader.getResourceAsStream(classfile)
+        Files.createDirectories(out.getParent)
+        Files.copy(in, out, StandardCopyOption.REPLACE_EXISTING)
+        tmp.toString()
+      }
+      classpathOption = "-cp" :: forkLauncherClasspath :: Nil
+      appOptions = forkLauncher.getCanonicalName :: argsFile.toString :: Nil
       cmd = java.syntax :: jvmOptions.toList ::: classpathOption ::: appOptions
 
       logTask <- if (logger.isVerbose) {
@@ -145,7 +166,7 @@ final class JvmForker(config: JdkConfig, classpath: Array[AbsolutePath]) extends
   private def ensureClasspathLength(classpath: Array[AbsolutePath]): Try[String] = {
     val fullClasspathStr = classpath.map(_.syntax).mkString(pathSeparator)
 
-    if (fullClasspathStr.length > JvmProcessForker.classpathCharLimit)
+    if (false && fullClasspathStr.length > JvmProcessForker.classpathCharLimit)
       createTempDependenciesJar(classpath).map(_.syntax)
     else
       Try(fullClasspathStr)
@@ -157,7 +178,8 @@ final class JvmForker(config: JdkConfig, classpath: Array[AbsolutePath]) extends
 
     // We need to manually collect .class files from directories into the jar since
     // manifest files only work with .jar files for classpath
-    val (directories, files) = classpath.partition(_.isDirectory)
+    val directories = Nil
+    val files = classpath
 
     val (globbedJars, globbedClasses) = directories
       .flatMap(expandDirectory)
