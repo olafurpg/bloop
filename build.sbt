@@ -191,6 +191,7 @@ lazy val frontend: Project = project
     bloopShared,
     backend,
     backend % "test->test",
+    cachegun,
     jsonConfig212,
     buildpressConfig % "it->compile"
   )
@@ -248,6 +249,21 @@ lazy val frontend: Project = project
       Dependencies.nuprocess
     ),
     dependencyOverrides += Dependencies.shapeless
+  )
+
+lazy val cachegun: Project = project
+  .disablePlugins(ScriptedPlugin)
+  .dependsOn(bloopShared, bloopgun)
+  .settings(testSettings)
+  .settings(
+    fork := true,
+    mainClass := Some("bloop.cachegun.Server"),
+    libraryDependencies ++= List(
+      Dependencies.nailgun,
+      Dependencies.snailgun,
+      Dependencies.jsoniterCore,
+      Dependencies.jsoniterMacros % Provided
+    )
   )
 
 lazy val bloopgun: Project = project
@@ -779,6 +795,7 @@ val bloop = project
             jsBridge10,
             sockets,
             bloopgun,
+            cachegun,
             launcher,
             bloopgunShaded,
             launcherShaded,
@@ -813,6 +830,7 @@ val bloop = project
             jsBridge10,
             sockets,
             bloopgun,
+            cachegun,
             launcher,
             bloopgunShaded,
             launcherShaded,
