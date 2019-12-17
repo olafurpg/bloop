@@ -361,7 +361,6 @@ object Interpreter {
             val handler = new LoggingEventHandler(state.logger)
             val failIfNoFrameworks: Boolean =
               userDefinedProjects.size == projectsToTest.size
-
             Tasks.test(
               state,
               projectsToTest,
@@ -370,7 +369,7 @@ object Interpreter {
               handler,
               failIfNoFrameworks,
               cmd.parallel,
-              RunMode.Normal
+              RunMode.fromCachegunBoolean(cmd.cachegun)
             )
         }
       }
@@ -584,7 +583,7 @@ object Interpreter {
                   mainClass,
                   cmd.args.toArray,
                   cmd.skipJargs,
-                  RunMode.Normal
+                  RunMode.fromCachegunBoolean(cmd.cachegun)
                 )
             }
         }

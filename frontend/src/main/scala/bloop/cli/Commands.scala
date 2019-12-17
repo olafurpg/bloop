@@ -143,7 +143,11 @@ object Commands {
       @HelpMessage(
         "Run tests in parallel. Should be chosen at user's discretion. By default, false"
       )
-      parallel: Boolean = false
+      parallel: Boolean = false,
+      @HelpMessage(
+        "Run tests in a cached classloader. Should be chosen at user's discretion. By default, false"
+      )
+      cachegun: Boolean = false
   ) extends CompilingCommand
 
   case class Console(
@@ -198,7 +202,11 @@ object Commands {
         "If an optimizer is used (e.g. Scala Native or Scala.js), run it in `debug` or `release` mode. Defaults to `debug`."
       )
       optimize: Option[OptimizerConfig] = None,
-      @Recurse cliOptions: CliOptions = CliOptions.default
+      @Recurse cliOptions: CliOptions = CliOptions.default,
+      @HelpMessage(
+        "Run in a cached classloader. Should be chosen at user's discretion. By default, false"
+      )
+      cachegun: Boolean = false
   ) extends LinkingCommand
 
   case class Link(

@@ -12,6 +12,23 @@ import java.nio.file.Files
 import java.util.jar.{Attributes, JarOutputStream, Manifest}
 import monix.eval.Task
 import scala.util.{Failure, Properties, Success, Try}
+import snailgun.protocol.Streams
+import snailgun.logging.SnailgunLogger
+import java.util.concurrent.atomic.AtomicBoolean
+import java.io.OutputStream
+import java.nio.ByteBuffer
+import bloop.DependencyResolution
+import bloop.internal.build.BuildInfo
+import bloop.engine.ExecutionContext
+import bloop.bloopgun.core.ServerStatus
+import bloop.bloopgun.StartServer
+import bloop.bloopgun.ServerConfig
+import bloop.bloopgun.core.Shell
+import bloop.bloopgun.FireInBackground
+import bloop.cachegun.CachegunClasspath
+import bloop.cachegun.Cachegun
+import bloop.cachegun.CachegunClient
+import bloop.cachegun.CachegunArguments
 
 /**
  * Collects configuration to start a new program in a new process
@@ -55,7 +72,6 @@ trait JvmProcessForker {
     val (userJvmOptions, userArgs) =
       if (skipJargs) (Array.empty[String], args0)
       else args0.partition(_.startsWith("-J"))
-
     runMain(cwd, mainClass, userArgs, userJvmOptions, logger, opts, extraClasspath)
   }
 
@@ -82,8 +98,10 @@ object JvmProcessForker {
     mode match {
       case RunMode.Normal => new JvmForker(config, classpath)
       case RunMode.Debug => new JvmDebuggingForker(new JvmForker(config, classpath))
+      case RunMode.Cachegun => new CachegunProcessForker(config, classpath)
     }
   }
+
 }
 
 /**
@@ -237,5 +255,72 @@ final class JvmDebuggingForker(underlying: JvmProcessForker) extends JvmProcessF
 
   private def enableDebugInterface: String = {
     s"-agentlib:jdwp=transport=dt_socket,server=y,suspend=y,quiet=n"
+  }
+}
+
+final case class CachegunProcessForker(config: JdkConfig, classpath: Array[AbsolutePath])
+    extends JvmProcessForker {
+  def newClassLoader(parent: Option[ClassLoader]): ClassLoader = {
+    JvmProcessForker(config, classpath).newClassLoader(parent)
+  }
+  private class SnailgunOutputStream(op: String => Unit) extends OutputStream {
+    val carry = new StringBuilder()
+    def write(b: Int): Unit = {
+      throw new UnsupportedOperationException("use write(Array[Byte]) instead")
+    }
+    override def write(b: Array[Byte]): Unit = {
+      Forker.onEachLine(ByteBuffer.wrap(b), carry)(op)
+    }
+    def onExit(): Unit = {
+      if (carry.nonEmpty) {
+        op(carry.toString())
+      }
+    }
+  }
+  def runMain(
+      cwd: AbsolutePath,
+      mainClass: String,
+      args: Array[String],
+      jargs: Array[String],
+      logger: Logger,
+      opts: CommonOptions,
+      extraClasspath: Array[AbsolutePath]
+  ): Task[Int] = {
+    Task {
+      val out = new SnailgunOutputStream(logger.info)
+      val err = new SnailgunOutputStream(logger.error)
+      val slogger = new SnailgunLogger("log", opts.out, isVerbose = false)
+      val client = new CachegunClient(
+        opts.env.toMap,
+        cwd.underlying,
+        slogger,
+        cachegunIn = opts.in,
+        cachegunOut = out,
+        cachegunErr = err,
+        startCachegunServer = () => {
+          val serverConfig = ServerConfig(
+            host = Some(bloop.cachegun.Server.Host),
+            port = Some(bloop.cachegun.Server.Port),
+            name = "cachegun",
+            fullyQualifiedName = classOf[bloop.cachegun.Server].getCanonicalName()
+          )
+          val resolved =
+            CachegunClasspath.resolveWithFallbackToThisClasspath(BuildInfo.version, slogger)
+          FireInBackground(Shell.default).fire(resolved, serverConfig, slogger)
+        }
+      )
+      val fullClasspath = (classpath ++ extraClasspath).map(_.toString()).toVector
+      val (jars, directories) = fullClasspath.partition(_.endsWith(".jar"))
+      val cachegunArguments = CachegunArguments(
+        cachedClasspath = Vector(jars),
+        uncachedClasspath = directories,
+        mainClass = mainClass,
+        mainMethod = None, // defaults to "main"
+        arguments = args,
+        systemProperties = Map("user.dir" -> cwd.toString()),
+        verbose = Some(logger.isVerbose)
+      )
+      client.run(cachegunArguments)
+    }
   }
 }

@@ -68,10 +68,10 @@ object Server {
       .commonPool()
       .submit(new Runnable {
         override def run(): Unit = {
-          server.shutdown(false)
+          try bloop.cachegun.Server.signalExit()
+          finally server.shutdown(false)
         }
       })
-
     ()
   }
 

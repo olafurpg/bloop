@@ -32,9 +32,11 @@ import scala.collection.mutable
 import scala.util.control.NonFatal
 
 object TestInternals {
-  private final val sbtOrg = "org.scala-sbt"
+  // NOTE(olafur): using sbt-agent fork until fix from https://github.com/sbt/sbt/pull/5315 is released.
+  // Source code for this test-agent fork lives in https://github.com/olafurpg/sbt/tree/forkmain-cached-classloading
+  private final val sbtOrg = "com.geirsson"
   private final val testAgentId = "test-agent"
-  private final val testAgentVersion = "1.2.8"
+  private final val testAgentVersion = "1.4.1-forkmain"
 
   private implicit val logContext: DebugFilter = DebugFilter.Test
 
