@@ -7,7 +7,9 @@ final case class ServerConfig(
     serverArgs: List[String] = Nil,
     serverLocation: Option[Path] = None,
     startTimeout: Option[Int] = None,
-    fireAndForget: Boolean = false
+    fireAndForget: Boolean = false,
+    name: String = "bloop",
+    fullyQualifiedName: String = "bloop.Server"
 ) {
   def userOrDefaultHost: String = host.getOrElse(Defaults.Host)
   def userOrDefaultPort: Int = port.getOrElse(Defaults.Port)

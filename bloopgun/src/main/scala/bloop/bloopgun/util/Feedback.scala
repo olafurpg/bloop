@@ -12,8 +12,16 @@ object Feedback {
     s"Server could not be started at ${config.host}:${config.port}! Giving up..."
   }
 
+  def startingServer(name: String, config: ServerConfig): String = {
+    s"Starting $name server at $config..."
+  }
+
+  def startingCachegunServer(config: ServerConfig): String = {
+    startingServer("cachegun", config)
+  }
+
   def startingBloopServer(config: ServerConfig): String = {
-    s"Starting bloop server at $config..."
+    startingServer("bloop", config)
   }
 
   def resolvingDependency(dependency: String): String = s"Resolving $dependency..."

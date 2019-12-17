@@ -31,7 +31,8 @@ lazy val bloopShared = (project in file("shared"))
       Dependencies.xxHashLibrary,
       Dependencies.configDirectories,
       Dependencies.sbtTestInterface,
-      Dependencies.sbtTestAgent
+      Dependencies.sbtTestAgent,
+      Dependencies.slf4jNop
     )
   )
 

@@ -89,17 +89,25 @@ object ServerStatus {
     }
   }
 
-  def resolveServer(bloopVersion: String, logger: Logger) = {
+  def resolveCachegun(bloopVersion: String, logger: Logger): Option[ResolvedAt] = {
+    resolveArtifact("ch.epfl.scala", "cachegun_2.12", bloopVersion, logger)
+  }
+  def resolveServer(bloopVersion: String, logger: Logger): Option[ResolvedAt] = {
+    resolveArtifact("ch.epfl.scala", "bloop-frontend_2.12", bloopVersion, logger)
+  }
+  private def resolveArtifact(
+      organization: String,
+      module: String,
+      version: String,
+      logger: Logger
+  ): Option[ResolvedAt] = {
     import scala.concurrent.ExecutionContext.Implicits.global
-    DependencyResolution.resolveWithErrors(
-      "ch.epfl.scala",
-      "bloop-frontend_2.12",
-      bloopVersion,
-      logger
-    ) match {
+    DependencyResolution.resolveWithErrors(organization, module, version, logger) match {
       case Right(jars) => Some(ResolvedAt(jars))
       case Left(value) =>
-        logger.error("Unexpected error when resolving Bloop server via coursier!")
+        logger.error(
+          s"Unexpected error when resolving module '${organization}:$module:$version' via coursier!"
+        )
         logger.error(value.getMessage())
         logger.trace(value)
         None
