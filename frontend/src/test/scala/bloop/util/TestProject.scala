@@ -90,7 +90,8 @@ abstract class BaseTestProject {
       resources: List[String] = Nil,
       jvmConfig: Option[Config.JvmConfig] = None,
       order: Config.CompileOrder = Config.Mixed,
-      jars: Array[AbsolutePath] = Array()
+      jars: Array[AbsolutePath] = Array(),
+      workingDir: Option[AbsolutePath] = None
   ): TestProject = {
     val projectBaseDir = Files.createDirectories(baseDir.underlying.resolve(name))
     val origin = TestUtil.syntheticOriginFor(baseDir)
@@ -139,6 +140,7 @@ abstract class BaseTestProject {
       name,
       projectBaseDir,
       Option(baseDir.underlying),
+      workingDir.map(_.underlying),
       List(sourceDir.underlying),
       directDependencies.map(_.config.name),
       classpath,
