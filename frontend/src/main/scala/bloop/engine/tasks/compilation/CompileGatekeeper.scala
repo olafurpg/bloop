@@ -114,10 +114,14 @@ object CompileGatekeeper {
     def initializeLastSuccessful(previousOrNull: LastSuccessfulResult): LastSuccessfulResult = {
       val result = Option(previousOrNull).getOrElse(bundle.lastSuccessful)
       if (!result.classesDir.exists) {
-        debug(s"Ignoring analysis for ${project.name}, directory ${result.classesDir} is missing")
+        if (logger.isVerbose) {
+          debug(s"Ignoring analysis for ${project.name}, directory ${result.classesDir} is missing")
+        }
         LastSuccessfulResult.empty(inputs.project)
       } else if (bundle.latestResult == Compiler.Result.Empty) {
-        debug(s"Ignoring existing analysis for ${project.name}, last result was empty")
+        if (logger.isVerbose) {
+          debug(s"Ignoring existing analysis for ${project.name}, last result was empty")
+        }
         LastSuccessfulResult
           .empty(inputs.project)
           // Replace classes dir, counter and populating with values from previous for correctness
@@ -127,7 +131,9 @@ object CompileGatekeeper {
             populatingProducts = result.populatingProducts
           )
       } else {
-        debug(s"Using successful result for ${project.name} associated with ${result.classesDir}")
+        if (logger.isVerbose) {
+          debug(s"Using successful result for ${project.name} associated with ${result.classesDir}")
+        }
         result
       }
     }
@@ -150,7 +156,8 @@ object CompileGatekeeper {
               } else {
                 counterForUsedClassesDir = counter
                 val newCount = counter.incrementAndGet(1)
-                logger.debug(s"Increasing counter for ${previousResult.classesDir} to $newCount")
+                if (logger.isVerbose)
+                  logger.debug(s"Increasing counter for ${previousResult.classesDir} to $newCount")
                 counter
               }
             }
@@ -257,9 +264,11 @@ object CompileGatekeeper {
       }
     )
 
-    logger.debug(
-      s"Recording new last successful request for ${project.name} associated with ${successful.classesDir}"
-    )
+    if (logger.isVerbose) {
+      logger.debug(
+        s"Recording new last successful request for ${project.name} associated with ${successful.classesDir}"
+      )
+    }
 
     ()
   }

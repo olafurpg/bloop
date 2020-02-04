@@ -193,7 +193,9 @@ object CompileBundle {
           .executeOn(ioScheduler)
       }
 
-      logger.debug(s"Computing sources and classpath hashes for ${project.name}")
+      if (logger.isVerbose) {
+        logger.debug(s"Computing sources and classpath hashes for ${project.name}")
+      }
       Task.mapBoth(classpathHashesTask, sourceHashesTask) {
         case (Left(_), _) => CancelledCompileBundle
         case (_, Left(_)) => CancelledCompileBundle

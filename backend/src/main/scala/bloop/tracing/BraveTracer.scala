@@ -9,22 +9,44 @@ import scala.util.Failure
 import scala.util.Success
 import java.util.concurrent.TimeUnit
 
-final class BraveTracer private (
+abstract class BraveTracer {
+  def startNewChildTracer(name: => String, tags: (String, String)*): BraveTracer
+  def trace[T](name: => String, tags: (String, String)*)(
+      thunk: BraveTracer => T
+  ): T
+  def traceTask[T](name: => String, tags: (String, String)*)(
+      thunk: BraveTracer => Task[T]
+  ): Task[T]
+  def terminate(): Unit
+  def toIndependentTracer(name: => String, tags: (String, String)*): BraveTracer
+  def currentSpan: Span
+}
+
+class EmptyBraveTracer(val currentSpan: Span) extends BraveTracer {
+  def startNewChildTracer(name: => String, tags: (String, String)*): BraveTracer = this
+  def trace[T](name: => String, tags: (String, String)*)(thunk: BraveTracer => T): T = thunk(this)
+  def traceTask[T](name: => String, tags: (String, String)*)(
+      thunk: BraveTracer => Task[T]
+  ): Task[T] = thunk(this)
+  def terminate(): Unit = ()
+  def toIndependentTracer(name: => String, tags: (String, String)*): BraveTracer = this
+}
+final class ActiveBraveTracer private (
     tracer: Tracer,
     val currentSpan: Span,
     closeCurrentSpan: () => Unit
-) {
-  def startNewChildTracer(name: String, tags: (String, String)*): BraveTracer = {
+) extends BraveTracer {
+  def startNewChildTracer(name: => String, tags: (String, String)*): BraveTracer = {
     import brave.propagation.TraceContext
     val span = tags.foldLeft(tracer.newChild(currentSpan.context).name(name)) {
       case (span, (tagKey, tagValue)) => span.tag(tagKey, tagValue)
     }
 
     span.start()
-    new BraveTracer(tracer, span, () => span.finish())
+    new ActiveBraveTracer(tracer, span, () => span.finish())
   }
 
-  def trace[T](name: String, tags: (String, String)*)(
+  def trace[T](name: => String, tags: (String, String)*)(
       thunk: BraveTracer => T
   ): T = {
     val newTracer = startNewChildTracer(name, tags: _*)
@@ -39,7 +61,7 @@ final class BraveTracer private (
     }
   }
 
-  def traceTask[T](name: String, tags: (String, String)*)(
+  def traceTask[T](name: => String, tags: (String, String)*)(
       thunk: BraveTracer => Task[T]
   ): Task[T] = {
     val newTracer = startNewChildTracer(name, tags: _*)
@@ -64,7 +86,7 @@ final class BraveTracer private (
   /** Create an independent tracer that propagates this current context
    * and that whose completion in zipkin will happen independently. This
    * is ideal for tracing background tasks that outlive their parent trace. */
-  def toIndependentTracer(name: String, tags: (String, String)*): BraveTracer =
+  def toIndependentTracer(name: => String, tags: (String, String)*): BraveTracer =
     BraveTracer(name, Some(currentSpan.context), tags: _*)
 }
 
@@ -95,12 +117,13 @@ object BraveTracer {
     val rootSpan = tags.foldLeft(newParentTrace.name(name)) {
       case (span, (tagKey, tagValue)) => span.tag(tagKey, tagValue)
     }
-    rootSpan.start()
-    val closeEverything = () => {
-      rootSpan.finish()
-      tracing.close()
-      spanReporter.flush()
-    }
-    new BraveTracer(tracer, rootSpan, closeEverything)
+    new EmptyBraveTracer(rootSpan)
+    // rootSpan.start()
+    // val closeEverything = () => {
+    //   rootSpan.finish()
+    //   tracing.close()
+    //   spanReporter.flush()
+    // }
+    // new BraveTracer(tracer, rootSpan, closeEverything)
   }
 }

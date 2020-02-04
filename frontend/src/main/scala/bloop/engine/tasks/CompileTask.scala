@@ -489,17 +489,23 @@ object CompileTask {
     val previousReadOnlyToDelete = compilerResult match {
       case Success(_, _, products, _, _, isNoOp, _) =>
         if (isNoOp) {
-          logger.debug(s"Skipping delete of ${previousClassesDir} associated with no-op result")
+          if (logger.isVerbose)
+            logger.debug(s"Skipping delete of ${previousClassesDir} associated with no-op result")
           None
         } else if (CompileOutPaths.hasEmptyClassesDir(previousClassesDir)) {
-          logger.debug(s"Skipping delete of empty classes dir ${previousClassesDir}")
+          if (logger.isVerbose)
+            logger.debug(s"Skipping delete of empty classes dir ${previousClassesDir}")
           None
         } else if (currentlyUsedCounter != 0) {
-          logger.debug(s"Skipping delete of $previousClassesDir, counter is $currentlyUsedCounter")
+          if (logger.isVerbose)
+            logger.debug(
+              s"Skipping delete of $previousClassesDir, counter is $currentlyUsedCounter"
+            )
           None
         } else {
           val newClassesDir = products.newClassesDir
-          logger.debug(s"Scheduling to delete ${previousClassesDir} superseded by $newClassesDir")
+          if (logger.isVerbose)
+            logger.debug(s"Scheduling to delete ${previousClassesDir} superseded by $newClassesDir")
           Some(previousClassesDir)
         }
       case _ => None
@@ -509,7 +515,8 @@ object CompileTask {
       case None => Task.unit
       case Some(classesDir) =>
         Task.fork(Task.eval {
-          logger.debug(s"Deleting contents of orphan dir $classesDir")
+          if (logger.isVerbose)
+            logger.debug(s"Deleting contents of orphan dir $classesDir")
           BloopPaths.delete(classesDir)
         })
     }

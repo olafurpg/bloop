@@ -142,6 +142,9 @@ object CompileOutPaths {
   }
 
   private val ClassesEmptyDirPrefix = java.io.File.separator + "classes-empty-"
+  def hasEmptyClassesDir(classesDir: File): Boolean = {
+    classesDir.getAbsolutePath().contains(ClassesEmptyDirPrefix)
+  }
   def hasEmptyClassesDir(classesDir: AbsolutePath): Boolean = {
     /*
      * Empty classes dirs don't exist so match on path.
@@ -241,9 +244,11 @@ object Compiler {
     val newClassesDir = compileOut.internalNewClassesDir.underlying
     val newClassesDirPath = newClassesDir.toString
 
-    logger.debug(s"External classes directory ${externalClassesDirPath}")
-    logger.debug(s"Read-only classes directory ${readOnlyClassesDirPath}")
-    logger.debug(s"New rw classes directory ${newClassesDirPath}")
+    if (logger.isVerbose) {
+      logger.debug(s"External classes directory ${externalClassesDirPath}")
+      logger.debug(s"Read-only classes directory ${readOnlyClassesDirPath}")
+      logger.debug(s"New rw classes directory ${newClassesDirPath}")
+    }
 
     val allGeneratedRelativeClassFilePaths = new mutable.HashMap[String, File]()
     val readOnlyCopyBlacklist = new mutable.HashSet[Path]()
@@ -672,10 +677,10 @@ object Compiler {
       uniqueInputs: UniqueCompileInputs
   ): PreviousResult = {
     val newClasspathHashes =
-      BloopLookup.filterOutDirsFromHashedClasspath(uniqueInputs.classpath)
+      uniqueInputs.classpath.iterator.filterNot(BloopLookup.isDirectoryFileHash).toArray
     val newSetup = InterfaceUtil
       .toOption(previous.setup())
-      .map(s => s.withOptions(s.options().withClasspathHash(newClasspathHashes.toArray)))
+      .map(s => s.withOptions(s.options().withClasspathHash(newClasspathHashes)))
     previous.withSetup(InterfaceUtil.toOptional(newSetup))
   }
 

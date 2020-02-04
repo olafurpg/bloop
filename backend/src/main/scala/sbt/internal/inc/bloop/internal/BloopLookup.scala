@@ -39,15 +39,16 @@ final class BloopLookup(
 }
 
 object BloopLookup {
+  def isDirectoryFileHash(fh: FileHash): Boolean = {
+    // If directory hash matches, filter it out (directory hash changes with different
+    // bloop server sessions, it's just an optimization to avoid checking for isDir
+    BloopStamps.isDirectoryHash(fh) ||
+    // If directory exists, filter it out
+    !fh.file.getName.endsWith(".jar") ||
+    // If directory is empty classes dir, filter it out
+    CompileOutPaths.hasEmptyClassesDir(fh.file)
+  }
   def filterOutDirsFromHashedClasspath(classpath: Seq[FileHash]): Seq[FileHash] = {
-    classpath.filterNot { fh =>
-      // If directory hash matches, filter it out (directory hash changes with different
-      // bloop server sessions, it's just an optimization to avoid checking for isDir
-      BloopStamps.isDirectoryHash(fh) ||
-      // If directory exists, filter it out
-      fh.file.isDirectory() ||
-      // If directory is empty classes dir, filter it out
-      CompileOutPaths.hasEmptyClassesDir(AbsolutePath(fh.file.toPath))
-    }
+    classpath.filterNot(isDirectoryFileHash)
   }
 }
