@@ -214,7 +214,7 @@ final class BloopBspServices(
     )
     val currentWorkspaceSettings = WorkspaceSettings.readFromFile(configDir, callSiteState.logger)
     val currentRefreshProjectsCommand: Option[List[String]] =
-      currentWorkspaceSettings.flatMap(_.refreshProjects)
+      currentWorkspaceSettings.flatMap(_.refreshProjectsCommand)
 
     val isMetals = params.displayName.contains("Metals")
     val isIntelliJ = params.displayName.contains("IntelliJ")
@@ -243,10 +243,8 @@ final class BloopBspServices(
      * need to manually enable these in their build.
      */
     val metalsSettings: Option[WorkspaceSettings] = {
-      if (isIntelliJ) {
+      if (!isMetals) {
         currentWorkspaceSettings
-      } else if (!isMetals) {
-        None
       } else {
         extraBuildParams
           .flatMap(extra => extra.semanticdbVersion)
@@ -254,9 +252,9 @@ final class BloopBspServices(
             val supportedScalaVersions =
               extraBuildParams.toList.flatMap(_.supportedScalaVersions.toList.flatten)
             WorkspaceSettings(
-              semanticDBVersion,
-              supportedScalaVersions,
-              refreshProjectsCommand
+              Some(semanticDBVersion),
+              Some(supportedScalaVersions),
+              currentRefreshProjectsCommand
             )
           }
       }
@@ -896,8 +894,7 @@ final class BloopBspServices(
       }
 
       state.client.refreshProjectsCommand.foreach { command =>
-        reportBuildError(s"command: $command")
-        RefreshProjects.run(state.build.origin, command, client)
+        RefreshProjects.run(state.build.origin, command, logger)
       }
 
       Validate.validateBuildForCLICommands(state, reportBuildError(_)).flatMap { state =>

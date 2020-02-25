@@ -40,10 +40,17 @@ import com.github.plokhotnyuk.jsoniter_scala.macros.{JsonCodecMaker, CodecMakerC
  * we should skip the resolution of the plugin.
  */
 case class WorkspaceSettings(
-    semanticDBVersion: String,
-    supportedScalaVersions: List[String],
-    refreshProjects: Option[List[String]] = None
-)
+    semanticDBVersion: Option[String],
+    supportedScalaVersions: Option[List[String]],
+    refreshProjectsCommand: Option[List[String]]
+) {
+  def withSemanticdbSettings: Option[(WorkspaceSettings, SemanticdbSettings)] =
+    (semanticDBVersion, supportedScalaVersions) match {
+      case (Some(semanticDBVersion), Some(supportedScalaVersions)) =>
+        Some(this -> SemanticdbSettings(semanticDBVersion, supportedScalaVersions))
+      case _ => None
+    }
+}
 
 object WorkspaceSettings {
 
@@ -63,11 +70,16 @@ object WorkspaceSettings {
     val settingsPath = configPath.resolve(settingsFileName)
     if (!settingsPath.isFile) None
     else {
-      logger.debug(s"Loading workspace settings from $settingsFileName")(DebugFilter.All)
+      logger.info(s"Loading workspace settings from $settingsFileName")
       val bytes = Files.readAllBytes(settingsPath.underlying)
       Try(jsoniter.readFromArray(bytes)) match {
-        case Success(settings) => Option(settings)
-        case Failure(e) => throw e
+        case Success(settings) =>
+          logger.info(s"Loading workspace settings $settings")
+          Option(settings)
+        case Failure(e) =>
+          logger.error(s"failed to load config")
+          e.printStackTrace()
+          None
       }
     }
   }
@@ -78,7 +90,7 @@ object WorkspaceSettings {
       logger: Logger
   ): AbsolutePath = {
     val settingsFile = configDir.resolve(settingsFileName)
-    logger.debug(s"Writing workspace settings to $settingsFile")(DebugFilter.All)
+    logger.info(s"Writing workspace settings to $settingsFile: $settings")
     val bytes = jsoniter.writeToArray(settings, WriterConfig.withIndentionStep(4))
     Files.write(settingsFile.underlying, bytes)
     settingsFile
