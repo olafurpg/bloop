@@ -212,12 +212,26 @@ final class BloopBspServices(
     val clientClassesRootDir = extraBuildParams.flatMap(
       extra => extra.clientClassesRootDir.map(dir => AbsolutePath(dir.toPath))
     )
+    val currentWorkspaceSettings = WorkspaceSettings.readFromFile(configDir, callSiteState.logger)
+    val currentRefreshProjectsCommand: Option[List[String]] =
+      currentWorkspaceSettings.flatMap(_.refreshProjects)
+
+    val isMetals = params.displayName.contains("Metals")
+    val isIntelliJ = params.displayName.contains("IntelliJ")
+
+    val refreshProjectsCommand =
+      if (isIntelliJ) {
+        currentRefreshProjectsCommand
+      } else {
+        None
+      }
     val client = ClientInfo.BspClientInfo(
       params.displayName,
       params.version,
       params.bspVersion,
       ownsBuildFiles,
       clientClassesRootDir,
+      refreshProjectsCommand,
       () => isClientConnected.get
     )
 
@@ -228,8 +242,10 @@ final class BloopBspServices(
      * every project of a build so that users from different build tools don't
      * need to manually enable these in their build.
      */
-    val metalsSettings = {
-      if (!params.displayName.contains("Metals")) {
+    val metalsSettings: Option[WorkspaceSettings] = {
+      if (isIntelliJ) {
+        currentWorkspaceSettings
+      } else if (!isMetals) {
         None
       } else {
         extraBuildParams
@@ -239,7 +255,8 @@ final class BloopBspServices(
               extraBuildParams.toList.flatMap(_.supportedScalaVersions.toList.flatten)
             WorkspaceSettings(
               semanticDBVersion,
-              supportedScalaVersions
+              supportedScalaVersions,
+              refreshProjectsCommand
             )
           }
       }
@@ -384,7 +401,7 @@ final class BloopBspServices(
       val config = ReporterConfig.defaultFormat.copy(reverseOrder = false)
 
       val isSbtClient = state.client match {
-        case BspClientInfo(name, _, _, _, _, _) if name == "sbt" => true
+        case info: BspClientInfo if info.name == "sbt" => true
         case _ => false
       }
 
@@ -876,6 +893,11 @@ final class BloopBspServices(
           ShowMessageParams(MessageType.Error, None, None, msg)
         )(client)
         ()
+      }
+
+      state.client.refreshProjectsCommand.foreach { command =>
+        reportBuildError(s"command: $command")
+        RefreshProjects.run(state.build.origin, command, client)
       }
 
       Validate.validateBuildForCLICommands(state, reportBuildError(_)).flatMap { state =>

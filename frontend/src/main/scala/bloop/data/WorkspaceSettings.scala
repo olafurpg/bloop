@@ -41,7 +41,8 @@ import com.github.plokhotnyuk.jsoniter_scala.macros.{JsonCodecMaker, CodecMakerC
  */
 case class WorkspaceSettings(
     semanticDBVersion: String,
-    supportedScalaVersions: List[String]
+    supportedScalaVersions: List[String],
+    refreshProjects: Option[List[String]] = None
 )
 
 object WorkspaceSettings {
